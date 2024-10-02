@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>טופס מותאם אישית בעברית עם API</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f0f4f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      direction: rtl;
+      padding: 20px;
+    }
+
+    form {
+      background-color: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      width: 100%;
+      max-width: 600px;
+    }
+
+    h1, h2 {
+      color: #2c3e50;
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+
+    h2 {
+      font-size: 1.2rem;
+      color: #34495e;
+      margin-top: 2rem;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: #2c3e50;
+      font-weight: bold;
+    }
+
+    input[type="text"], textarea {
+      width: 100%;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+      border: 1px solid #bdc3c7;
+      border-radius: 6px;
+      font-size: 1rem;
+      transition: all 0.3s ease;
+      box-sizing: border-box;
+    }
+
+    input[type="text"]:focus, textarea:focus {
+      outline: none;
+      border-color: #3498db;
+      box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+    }
+
+    textarea {
+      resize: none; /* Disable manual resizing */
+      overflow: hidden; /* Hide scrollbars */
+      min-height: 50px; /* Minimum height */
+    }
+
+    button {
+      background-color: #3498db;
+      color: white;
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 1rem;
+      width: 100%;
+      transition: all 0.3s ease;
+      margin-top: 1rem;
+    }
+
+    button:hover {
+      background-color: #2980b9;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    #status {
+      margin-top: 1rem;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    .success {
+      color: #27ae60;
+    }
+
+    .error {
+      color: #e74c3c;
+    }
+
+    .question-set {
+      margin-bottom: 1.5rem;
+      padding: 1rem;
+      background-color: #ecf0f1;
+      border-radius: 8px;
+    }
+
+    #response {
+      direction: ltr;
+      text-align: left;
+      background-color: #f7f7f7;
+      padding: 1rem;
+      margin-top: 1rem;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <form id="customHebrewForm">
+    <h1>טופס מותאם אישית</h1>
+    
+    <div class="question-set">
+      <label for="question1">שאלה 1</label>
+      <input type="text" id="question1" name="question1" placeholder="הכנס את השאלה הראשונה" required>
+      <input type="text" id="answer1" name="answer1" placeholder="תשובה לשאלה 1" required>
+    </div>
+    
+    <div class="question-set">
+      <label for="question2">שאלה 2</label>
+      <input type="text" id="question2" name="question2" placeholder="הכנס את השאלה השנייה" required>
+      <input type="text" id="answer2" name="answer2" placeholder="תשובה לשאלה 2" required>
+    </div>
+    
+    <div class="question-set">
+      <label for="question3">שאלה 3</label>
+      <input type="text" id="question3" name="question3" placeholder="הכנס את השאלה השלישית" required>
+      <input type="text" id="answer3" name="answer3" placeholder="תשובה לשאלה 3" required>
+    </div>
+    
+    <h2>אודות העסק</h2>
+    <textarea id="aboutBusiness" name="aboutBusiness" placeholder="ספר לנו קצת על העסק שלך..."></textarea>
+    
+    <button type="submit">שלח טופס</button>
+    <div id="status"></div>
+    <div id="response"></div>
+  </form>
+
+  <script>
+    // Auto resize function for textareas
+    function autoResize(element) {
+      element.style.height = 'auto'; // Reset height
+      element.style.height = element.scrollHeight + 'px'; // Set height based on content
+    }
+
+    // Apply auto-resize function to all textareas
+    document.querySelectorAll('textarea').forEach(textarea => {
+      textarea.style.overflow = 'hidden'; // Hide scrollbar
+      textarea.style.boxSizing = 'border-box'; // Include padding in height calculation
+      autoResize(textarea); // Call autoResize for any pre-filled content
+      textarea.addEventListener('input', () => autoResize(textarea)); // Resize on input
+    });
+
+    // Handle form submission
+    document.getElementById('customHebrewForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      // Collect form data
+      const formData = {
+        question1: document.getElementById('question1').value,
+        answer1: document.getElementById('answer1').value,
+        question2: document.getElementById('question2').value,
+        answer2: document.getElementById('answer2').value,
+        question3: document.getElementById('question3').value,
+        answer3: document.getElementById('answer3').value,
+        aboutBusiness: document.getElementById('aboutBusiness').value
+      };
+
+      // Send POST request
+      fetch('http://127.0.0.1:5001/questionandanswers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: JSON.stringify(formData) }),
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        return response.text(); // Assuming response is text (HTML)
+      })
+      .then(data => {
+        document.getElementById('status').innerHTML = 'הטופס נשלח בהצלחה!';
+        document.getElementById('status').className = 'success';
+        document.getElementById('response').innerHTML = `<h3>Response from Server:</h3><p>${data}</p>`;
+        document.getElementById('response').style.direction = 'ltr'; // Ensure LTR for response
+        console.log('Success:', data);
+      })
+      .catch((error) => {
+        document.getElementById('status').innerHTML = 'אירעה שגיאה בשליחת הטופס. אנא נסה שוב.';
+        document.getElementById('status').className = 'error';
+        document.getElementById('response').innerHTML = `<h3>Error:</h3><p>${error}</p>`;
+        document.getElementById('response').style.direction = 'ltr'; // Ensure LTR for error
+        console.error('Error:', error);
+      });
+    });
+  </script>
+</body>
+</html>
