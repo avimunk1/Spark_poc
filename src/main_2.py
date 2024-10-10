@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from pydantic import BaseModel
 from openai import OpenAI
-from validator import mailVerifed
+from validator import mailVerifed, MailResults
 
 # Constants for file paths
 SYSTEM_INSTRUCTIONS_FILE = 'systemInstructions.txt'
@@ -17,7 +17,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
 )
 
-def email_output_to_html(email_text):
+def email_output_to_html(email_text, email_verified: MailResults):
     """Convert the email output to HTML format."""
     html_content = f"""
     <html>
@@ -39,6 +39,16 @@ def email_output_to_html(email_text):
             .email-body {{
                 margin-top: 10px;
             }}
+            .verification {{
+                margin-top: 20px;
+                padding: 10px;
+                border: 1px solid #ccc;
+                background-color: #f8f8f8;
+            }}
+            .verification-status {{
+                font-weight: bold;
+                color: {{'green' if email_verified.isVerified else 'red'}};
+            }}
         </style>
     </head>
     <body>
@@ -55,6 +65,10 @@ def email_output_to_html(email_text):
         </div>
         <div class="email-section">
             <div class="email-business">Business Name: {email_text.businessName}</div>
+        </div>
+        <div class="verification">
+            <div class="verification-status">Verification Status: {'Verified' if email_verified.isVerified else 'Not Verified'}</div>
+            <div>Issue Description: {email_verified.issueDesc if not email_verified.isVerified else 'No issues found'}</div>
         </div>
     </body>
     </html>
@@ -111,9 +125,6 @@ def main(ex_qanda=None):
 
     try:
         system_content = prepare_messages(SYSTEM_INSTRUCTIONS_FILE)
-        #user_content = prepare_messages(USER_INPUT_FILE)
-        #about_the_business = user_content
-        #questions_and_answers = prepare_messages(QA_FILE)
         questions_and_answers = ""
         if ex_qanda:
             questions_and_answers = ex_qanda
@@ -131,20 +142,16 @@ def main(ex_qanda=None):
 
         email_text = completion.choices[0].message.parsed
 
-
         logging.info(f'Is Reliable: {email_text.isReliable}')
         logging.info(f'Is Too Sad: {email_text.isTooSad}')
         logging.info(f'Business Name: {email_text.businessName}')
 
-        email_verified = mailVerifed(questions_and_answers, email_text.messageText)
+        email_verified: MailResults = mailVerifed(questions_and_answers, email_text.messageText)
         logging.info(f'2nd verification: {email_verified.isVerified}')
         if not email_verified.isVerified:
             logging.warning(f'Issue: {email_verified.issueDesc}')
-            txt_issue_desc = str(email_verified.issueDesc)
 
-        #if islocal: save_to_rtf(email_text, questions_and_answers, about_the_business, email_verified.isVerified, email_verified.issueDesc)
-        #print(email_text,type(email_text))
-        html_output = email_output_to_html(email_text)
+        html_output = email_output_to_html(email_text, email_verified)
         return html_output
     except Exception as e:
         logging.error(f'Failed to get response to create email output: {e}')
