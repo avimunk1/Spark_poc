@@ -1,4 +1,5 @@
 # Description: This script is used to generate an email output based on the user input and system instructions. The user input is combined with the system instructions and sent to the OpenAI API for processing. The response is then parsed to extract the email output details. The email output is saved to an RTF file along with additional content. The script also calls the mailVerified function from the validator.py file to verify the email message against the questions and answers provided.
+# the html in s3 here http://sparkpoc1.s3.amazonaws.com/statics/index.html
 
 import os
 import logging
@@ -6,21 +7,15 @@ from datetime import datetime
 from pydantic import BaseModel
 from openai import OpenAI
 from validator import mailVerifed
-islocal = False
 
-# Configure logging
+# Constants for file paths
+SYSTEM_INSTRUCTIONS_FILE = 'systemInstructions.txt'
+
 #logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
 )
-
-# Constants for file paths
-SYSTEM_INSTRUCTIONS_FILE = 'systemInstructions.txt'
-#USER_INPUT_FILE = '../InputFiles/inputData-kids.txt'
-#USER_INPUT_FILE = 'inputsample.txt'
-#QA_FILE = '../InputFiles/Questionandanswers-kids3-unhappy.txt'
-OUTPUT_DIR = '../outputFiles/'
 
 def email_output_to_html(email_text):
     """Convert the email output to HTML format."""
@@ -78,7 +73,6 @@ def get_openai_api_key():
     """Retrieve the OpenAI API key from environment variables or prompt the user."""
     openai_api_key = os.getenv('OPENAI_API_KEY')
 
-
     #print(openai_api_key)
     if not openai_api_key:
         logging.error('OpenAI API key not found in environment variables.')
@@ -101,44 +95,6 @@ def prepare_messages(file_name):
         logging.error(f'Error reading file {file_name}: {e}')
         raise
 
-def encode_to_rtf(text):
-    """Encode the text to RTF format to support Hebrew characters."""
-    encoded_text = ''
-    for char in text:
-        if ord(char) < 128:
-            encoded_text += char
-        else:
-            encoded_text += f'\\u{ord(char)}?'
-    return encoded_text
-
-def save_to_rtf(email_text, questions_and_answers, user_content, ex_verify, issue_desc):
-    """Save the inputs and email output to an RTF file for testing."""
-    current_time = datetime.now().strftime('%Y%m%d_%H%M%S')
-    file_name = os.path.join(OUTPUT_DIR, f'{email_text.businessName}_{current_time}.rtf')
-
-    questions_and_answers_encoded = encode_to_rtf(questions_and_answers)
-    user_content_encoded = encode_to_rtf(user_content)
-
-    rtf_content = (
-        '{\\rtf1\\ansi\\deff0\n'
-        '\\b Email Output\\b0\\par\n'
-        '\\---\\b0\\par\n'
-        f'\\b Email Subject: \\b0 {email_text.emailSubject}\\par\\n\n'
-        '\\---\\b0\\par\n'
-        f'\\b Message Text: \\b0 {email_text.messageText}\\par\\n\n'
-        '\\---\\b0\\par\n'
-        f'\\b Is Reliable?:\\b0 {email_text.isReliable}\\par\\n\n'
-        f'\\b is pessimistic?:\\b0 {email_text.isTooSad}\\par\\n\n'
-        f'\\b Business Name:\\b0 {email_text.businessName}\\par\\n\n'
-        '\\b Inputs\\b0\\par\n'
-        f'\\b Q&A: \\b0\\par {questions_and_answers_encoded}\\par\\n\n'
-        '\\---\\b0\\par\n'
-        f'\\b about the business:\\b0\\par {user_content_encoded}\\par\n'
-        '\\---\\b0\\par\n'
-        f'\\b 2nd verification results:\\b0\\par {ex_verify}\\par\n'
-        f'\\b 2nd verification issue description:\\b0\\par {issue_desc}\\par\n'
-        '}'
-    )
 
     try:
         with open(file_name, 'w', encoding='utf-8') as rtf_file:
@@ -186,10 +142,9 @@ def main(ex_qanda=None):
             logging.warning(f'Issue: {email_verified.issueDesc}')
             txt_issue_desc = str(email_verified.issueDesc)
 
-        if islocal: save_to_rtf(email_text, questions_and_answers, about_the_business, email_verified.isVerified, email_verified.issueDesc)
+        #if islocal: save_to_rtf(email_text, questions_and_answers, about_the_business, email_verified.isVerified, email_verified.issueDesc)
         #print(email_text,type(email_text))
         html_output = email_output_to_html(email_text)
-
         return html_output
     except Exception as e:
         logging.error(f'Failed to get response to create email output: {e}')

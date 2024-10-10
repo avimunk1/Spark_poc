@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="he">
+<html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>טופס מותאם אישית בעברית עם API</title>
+  <title>Custom Hebrew Form</title>
   <link rel="stylesheet" href="style.css">
   <style>
     body {
@@ -152,63 +152,53 @@
     <div id="response"></div>
   </form>
 
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
   <script>
-    // Auto resize function for textareas
-    function autoResize(element) {
-      element.style.height = 'auto'; // Reset height
-      element.style.height = element.scrollHeight + 'px'; // Set height based on content
-    }
+    // Add this at the beginning of your script
+    const isLocalEnvironment = true; // Set this to false when deploying to S3
 
-    // Apply auto-resize function to all textareas
-    document.querySelectorAll('textarea').forEach(textarea => {
-      textarea.style.overflow = 'hidden'; // Hide scrollbar
-      textarea.style.boxSizing = 'border-box'; // Include padding in height calculation
-      autoResize(textarea); // Call autoResize for any pre-filled content
-      textarea.addEventListener('input', () => autoResize(textarea)); // Resize on input
-    });
+    $(document).ready(function() {
+      $('#customHebrewForm').submit(function(e) {
+        e.preventDefault();
+        
+        // Collect form data
+        const formData = {
+          question1: $('#question1').val(),
+          answer1: $('#answer1').val(),
+          question2: $('#question2').val(),
+          answer2: $('#answer2').val(),
+          question3: $('#question3').val(),
+          answer3: $('#answer3').val(),
+          aboutBusiness: $('#aboutBusiness').val()
+        };
 
-    // Handle form submission
-    document.getElementById('customHebrewForm').addEventListener('submit', function(e) {
-      e.preventDefault();
-      
-      // Collect form data
-      const formData = {
-        question1: document.getElementById('question1').value,
-        answer1: document.getElementById('answer1').value,
-        question2: document.getElementById('question2').value,
-        answer2: document.getElementById('answer2').value,
-        question3: document.getElementById('question3').value,
-        answer3: document.getElementById('answer3').value,
-        aboutBusiness: document.getElementById('aboutBusiness').value
-      };
+        // Force HTTP for local environment, use HTTPS for production
+        const apiUrl = isLocalEnvironment 
+          ? 'http://54.174.142.111:5000/questionandanswers'
+          : 'https://54.174.142.111:5000/questionandanswers';
 
-      // Send POST request
-      fetch('http://127.0.0.1:5001/questionandanswers', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text: JSON.stringify(formData) }),
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
-        }
-        return response.text(); // Assuming response is text (HTML)
-      })
-      .then(data => {
-        document.getElementById('status').innerHTML = 'הטופס נשלח בהצלחה!';
-        document.getElementById('status').className = 'success';
-        document.getElementById('response').innerHTML = `<h3>Response from Server:</h3><p>${data}</p>`;
-        document.getElementById('response').style.direction = 'ltr'; // Ensure LTR for response
-        console.log('Success:', data);
-      })
-      .catch((error) => {
-        document.getElementById('status').innerHTML = 'אירעה שגיאה בשליחת הטופס. אנא נסה שוב.';
-        document.getElementById('status').className = 'error';
-        document.getElementById('response').innerHTML = `<h3>Error:</h3><p>${error}</p>`;
-        document.getElementById('response').style.direction = 'ltr'; // Ensure LTR for error
-        console.error('Error:', error);
+        console.log('Using API URL:', apiUrl); // For debugging
+
+        $.ajax({
+          url: apiUrl,
+          type: 'POST',
+          data: JSON.stringify({ text: JSON.stringify(formData) }),
+          contentType: 'application/json',
+          xhrFields: {
+            withCredentials: false
+          },
+          success: function(response) {
+            $('#status').html('הטופס נשלח בהצלחה!').removeClass('error').addClass('success');
+            $('#response').html(`<h3>Response from Server:</h3><p>${response}</p>`).css('direction', 'ltr');
+            console.log('Success:', response);
+          },
+          error: function(xhr, status, error) {
+            $('#status').html('אירעה שגיאה בשליחת הטופס. אנא נסה שוב.').removeClass('success').addClass('error');
+            $('#response').html(`<h3>Error:</h3><p>${error}</p><p>Status: ${status}</p>`).css('direction', 'ltr');
+            console.error('Error:', error, 'Status:', status, 'XHR:', xhr);
+          }
+        });
       });
     });
   </script>

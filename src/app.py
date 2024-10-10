@@ -6,6 +6,8 @@ from main_2 import main as m
 app = Flask(__name__)
 CORS(app)  # Add this line to enable CORS
 
+localEnv = True 
+
 def run_service(data):
     logging.info(f"Running the main service")
     data = data.get('text', '')
@@ -26,4 +28,9 @@ def trigger_service():
     return Response(result, status=200, mimetype='text/html')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001)
+    if localEnv:    
+        app.run(host='0.0.0.0', port=5001)
+    else:
+        app.run(host='0.0.0.0', port=5000)
+        print("localEnv is False, running on default port")
+
