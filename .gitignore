@@ -37,3 +37,9 @@ env/
 *.rar
 *.tar
 *.zip
+new_venv/
+nohup.out
+src/__pycache__/
+src/nohup.out
+src/test_venv/
+.venv/
