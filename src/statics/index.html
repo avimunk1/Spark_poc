@@ -4,6 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Custom Hebrew Form</title>
+  <script>
+    // This should be set to false when deploying to S3
+    const isLocalEnvironment = true;
+    
+    if (!isLocalEnvironment) {
+      // Only add the CSP meta tag in production
+      const meta = document.createElement('meta');
+      meta.httpEquiv = "Content-Security-Policy";
+      meta.content = "upgrade-insecure-requests";
+      document.head.appendChild(meta);
+    }
+  </script>
   <link rel="stylesheet" href="style.css">
   <style>
     body {
