@@ -4,19 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Custom Hebrew Form</title>
-  <script>
-    // This should be set to false when deploying to S3
-    const isLocalEnvironment = true;
-    
-    if (!isLocalEnvironment) {
-      // Only add the CSP meta tag in production
-      const meta = document.createElement('meta');
-      meta.httpEquiv = "Content-Security-Policy";
-      meta.content = "upgrade-insecure-requests";
-      document.head.appendChild(meta);
-    }
-  </script>
   <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="https://sparkil.org/he/wp-content/uploads/sites/2/2024/07/cropped-fabicon-ping-32x32.webp" sizes="32x32">
   <style>
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -157,7 +146,7 @@
     </div>
     
     <h2>אודות העסק</h2>
-    <textarea id="aboutBusiness" name="aboutBusiness" placeholder="ספר לנו קצת על העסק שלך..."></textarea>
+    <textarea id="aboutBusiness" name="aboutBusiness" placeholder="ספר לנו קצת ע העסק שלך..."></textarea>
     
     <button type="submit">שלח טופס</button>
     <div id="status"></div>
@@ -165,16 +154,20 @@
   </form>
 
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-
   <script>
-    // Add this at the beginning of your script
-    const isLocalEnvironment = true; // Set this to false when deploying to S3
-
     $(document).ready(function() {
-      $('#customHebrewForm').submit(function(e) {
+      $('#customHebrewForm').on('submit', function(e) {
         e.preventDefault();
-        
-        // Collect form data
+        console.log('Form submitted');
+
+        if (!this.checkValidity()) {
+          console.log('Form validation failed');
+          $('#status').html('אנא מלא את כל השדות הנדרשים').removeClass('success').addClass('error');
+          return;
+        }
+
+        console.log('Form is valid, preparing data');
+
         const formData = {
           question1: $('#question1').val(),
           answer1: $('#answer1').val(),
@@ -185,12 +178,12 @@
           aboutBusiness: $('#aboutBusiness').val()
         };
 
-        // Force HTTP for local environment, use HTTPS for production
-        const apiUrl = isLocalEnvironment 
-          ? 'http://54.174.142.111:5000/questionandanswers'
-          : 'https://54.174.142.111:5000/questionandanswers';
+        console.log('Form data:', formData);
 
-        console.log('Using API URL:', apiUrl); // For debugging
+        const apiUrl = 'http://34.225.161.164:5000/questionandanswers';
+        console.log('API URL:', apiUrl);
+
+        console.log('Preparing to send AJAX request');
 
         $.ajax({
           url: apiUrl,
@@ -201,14 +194,14 @@
             withCredentials: false
           },
           success: function(response) {
+            console.log('Success:', response);
             $('#status').html('הטופס נשלח בהצלחה!').removeClass('error').addClass('success');
             $('#response').html(`<h3>Response from Server:</h3><p>${response}</p>`).css('direction', 'ltr');
-            console.log('Success:', response);
           },
           error: function(xhr, status, error) {
+            console.error('Error:', error, 'Status:', status, 'XHR:', xhr);
             $('#status').html('אירעה שגיאה בשליחת הטופס. אנא נסה שוב.').removeClass('success').addClass('error');
             $('#response').html(`<h3>Error:</h3><p>${error}</p><p>Status: ${status}</p>`).css('direction', 'ltr');
-            console.error('Error:', error, 'Status:', status, 'XHR:', xhr);
           }
         });
       });

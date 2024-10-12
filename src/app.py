@@ -6,7 +6,7 @@ from main_2 import main as m
 app = Flask(__name__)
 CORS(app)  # Add this line to enable CORS
 
-localEnv = True 
+localEnv = False
 
 def run_service(data):
     logging.info(f"Running the main service")
