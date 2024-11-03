@@ -11,6 +11,7 @@ DATA_CENTER = os.environ.get('MAILCHIMP_DATA_CENTER')
 # Check if environment variables are set
 if not API_KEY or not DATA_CENTER:
     raise ValueError("MAILCHIMP_API_KEY and MAILCHIMP_DATA_CENTER must be set as environment variables")
+#todo: add this env vearibles to Ec2 PM2
 
 LIST_ID = '370513c0ab'
 
@@ -81,13 +82,15 @@ def get_contacts_by_tag(tag_name):
 
 #getFullContactInfo()
 
-
 # Main logic to retrieve and filter tags
 all_tags = get_all_tags()
-print("Tags containing the word 'Beauty' (case-insensitive):")
+print(all_tags)
+#print("Tags containing the word 'Be Beauty' (case-insensitive):")
+'''
 for tag in all_tags:
-    if 'beauty' in tag['name'].lower():
+    if 'Here to Make You Smile' in tag['name'].lower():
         #print(f"- {tag['name']} (ID: {tag['id']})")
         # Use the tag name, not the ID
         get_contacts_by_tag(tag['name'])
 
+'''
