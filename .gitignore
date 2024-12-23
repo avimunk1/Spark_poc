@@ -5,9 +5,28 @@ env/
 new_venv/
 src/test_venv/
 *.env
+.env
+.env.local
+.env.*.local
 
 # Project specific
 files/
+secrets/
+config/local.py
+*_local.py
+*_temp.py
+*_tmp.py
+
+# Secrets and keys
+*.pem
+*.key
+*.cert
+*.password
+*.secret
+secrets.txt
+credentials.json
+.credentials
+.secret
 
 # Python
 __pycache__/
@@ -30,27 +49,53 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
 
 # IDE specific files
 .vscode/
 .idea/
 *.swp
 *.swo
+*.sublime-workspace
+*.sublime-project
+.project
+.pydevproject
+.settings/
 
 # System files
 .DS_Store
 Thumbs.db
+*.bak
+*~
+.fuse_hidden*
+.directory
+.Trash-*
 
 # Logs and output
 *.log
 nohup.out
 src/nohup.out
+logs/
+*.out
+*.err
 
 # Documentation
 docs/
+doc/
+_build/
+build/
+dist/
 
 # Temporary files
 *.tmp
+*.temp
+*.swp
+*.swo
+*~
 
 # Compressed files
 *.7z
@@ -68,3 +113,4 @@ docs/
 *.dll
 *.exe
 *.o
+*.pyc
