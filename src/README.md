@@ -80,4 +80,9 @@ Refer to the `src/systemInstructions.txt` file for detailed guidelines on using 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
 ```
 
-
+Monday intgreation
+to start monday integration:
+   1. run the app.py normaly
+   2. run Ngrok: ngrok http 5000
+   3. use the ngrok url in the monday webhook to create a new webhook: the ngrook url + /monday_webhook
+   
