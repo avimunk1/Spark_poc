@@ -118,8 +118,17 @@ def prepare_messages(file_name):
         logging.error(f'Error saving RTF file {file_name}: {e}')
         raise
 
-def main(ex_qanda=None):
-    """Generate and validate the email output and save it to an RTF file."""
+def main(ex_qanda=None, html_response=True):
+    """Generate and validate the email output.
+    
+    Args:
+        ex_qanda: Optional questions and answers text
+        html_response: Boolean to determine response format (default: True for HTML)
+    
+    Returns:
+        str: HTML formatted response if html_response is True
+        dict: EmailOutput data if html_response is False
+    """
     openai_api_key = get_openai_api_key()
     client = OpenAI(api_key=openai_api_key)
 
@@ -151,8 +160,20 @@ def main(ex_qanda=None):
         if not email_verified.isVerified:
             logging.warning(f'Issue: {email_verified.issueDesc}')
 
-        html_output = email_output_to_html(email_text, email_verified)
-        return html_output
+        if html_response:
+            return email_output_to_html(email_text, email_verified)
+        else:
+            return {
+                "emailSubject": email_text.emailSubject,
+                "messageText": email_text.messageText,
+                "isReliable": email_text.isReliable,
+                "isTooSad": email_text.isTooSad,
+                "businessName": email_text.businessName,
+                "verification": {
+                    "isVerified": email_verified.isVerified,
+                    "issueDesc": email_verified.issueDesc if not email_verified.isVerified else None
+                }
+            }
     except Exception as e:
         logging.error(f'Failed to get response to create email output: {e}')
 
