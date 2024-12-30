@@ -7,9 +7,14 @@ from datetime import datetime
 from pydantic import BaseModel
 from openai import OpenAI
 from validator import mailVerifed, MailResults
+from pathlib import Path
+import json
 
 # Constants for file paths
 SYSTEM_INSTRUCTIONS_FILE = 'systemInstructions.txt'
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 #logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logging.basicConfig(
@@ -97,78 +102,89 @@ def get_openai_api_key():
             raise ValueError('OpenAI API key is required to proceed.')
     return openai_api_key
 
-def prepare_messages(file_name):
-    """Load the system instructions and user input from files."""
+def prepare_messages(file_path):
+    """Load the system instructions from file."""
     try:
-        with open(file_name, 'r', encoding='utf-8') as file:
-            return file.read()
+        logger.info(f"Attempting to read file from: {file_path}")
+        with open(file_path, 'r', encoding='utf-8') as file:
+            content = file.read()
+            logger.info(f"Successfully read {len(content)} characters from file")
+            return content
     except FileNotFoundError:
-        logging.error(f'File not found: {file_name}')
+        logger.error(f"File not found: {file_path}")
         raise
     except Exception as e:
-        logging.error(f'Error reading file {file_name}: {e}')
+        logger.error(f"Error reading file {file_path}: {e}")
         raise
 
-
-    try:
-        with open(file_name, 'w', encoding='utf-8') as rtf_file:
-            rtf_file.write(rtf_content)
-        logging.info(f'RTF file saved: {file_name}')
-    except Exception as e:
-        logging.error(f'Error saving RTF file {file_name}: {e}')
-        raise
-
-def main(ex_qanda=None, html_response=True):
-    """Generate and validate the email output.
-    
-    Args:
-        ex_qanda: Optional questions and answers text
-        html_response: Boolean to determine response format (default: True for HTML)
-    
-    Returns:
-        str: HTML formatted response if html_response is True
-        dict: EmailOutput data if html_response is False
+def m(ex_qanda=None, html_response=True, system_instructions_path=None):
     """
-    openai_api_key = get_openai_api_key()
-    client = OpenAI(api_key=openai_api_key)
-
+    Generate and validate the email output.
+    """
     try:
-        system_content = prepare_messages(SYSTEM_INSTRUCTIONS_FILE)
+        if system_instructions_path is None:
+            script_dir = Path(os.path.dirname(os.path.abspath(__file__)))
+            system_instructions_path = str(script_dir / 'systemInstructions.txt')
+            
+        logger.info(f"Using system instructions path: {system_instructions_path}")
+        system_content = prepare_messages(system_instructions_path)
+        logger.info("Successfully loaded system instructions")
+        
         questions_and_answers = ""
         if ex_qanda:
             questions_and_answers = ex_qanda
-            logging.info(f'got Q&A from post')
+            logger.info(f"Using provided Q&A: {questions_and_answers[:200]}...")
+            
         user_content = questions_and_answers
 
-        completion = client.beta.chat.completions.parse(
-            model='gpt-4o-2024-08-06',
+        # Initialize OpenAI client
+        client = OpenAI()  # This will use OPENAI_API_KEY from environment
+
+        # Updated to use correct OpenAI SDK format without response_format
+        completion = client.chat.completions.create(
+            model="gpt-4",
             messages=[
-                {'role': 'system', 'content': system_content},
-                {'role': 'user', 'content': user_content},
-            ],
-            response_format=EmailOutput,
+                {
+                    "role": "system", 
+                    "content": system_content + "\nPlease respond in JSON format with the following structure: {\"emailSubject\": string, \"messageText\": string, \"isReliable\": boolean, \"isTooSad\": boolean, \"businessName\": string}"
+                },
+                {"role": "user", "content": user_content},
+            ]
         )
 
-        email_text = completion.choices[0].message.parsed
+        # Parse the response
+        response_text = completion.choices[0].message.content
+        logger.info(f"Raw response from OpenAI: {response_text[:200]}...")  # Log first 200 chars
+        
+        try:
+            email_text = json.loads(response_text)  # Parse JSON response
+            logger.info("Successfully parsed JSON response")
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON response: {e}")
+            logger.error(f"Raw response was: {response_text}")
+            raise
+        
+        # Convert to EmailOutput model
+        email_output = EmailOutput(**email_text)
 
-        logging.info(f'Is Reliable: {email_text.isReliable}')
-        logging.info(f'Is Too Sad: {email_text.isTooSad}')
-        logging.info(f'Business Name: {email_text.businessName}')
+        logging.info(f'Is Reliable: {email_output.isReliable}')
+        logging.info(f'Is Too Sad: {email_output.isTooSad}')
+        logging.info(f'Business Name: {email_output.businessName}')
 
-        email_verified: MailResults = mailVerifed(questions_and_answers, email_text.messageText)
+        email_verified: MailResults = mailVerifed(questions_and_answers, email_output.messageText)
         logging.info(f'2nd verification: {email_verified.isVerified}')
         if not email_verified.isVerified:
             logging.warning(f'Issue: {email_verified.issueDesc}')
 
         if html_response:
-            return email_output_to_html(email_text, email_verified)
+            return email_output_to_html(email_output, email_verified)
         else:
             return {
-                "emailSubject": email_text.emailSubject,
-                "messageText": email_text.messageText,
-                "isReliable": email_text.isReliable,
-                "isTooSad": email_text.isTooSad,
-                "businessName": email_text.businessName,
+                "emailSubject": email_output.emailSubject,
+                "messageText": email_output.messageText,
+                "isReliable": email_output.isReliable,
+                "isTooSad": email_output.isTooSad,
+                "businessName": email_output.businessName,
                 "verification": {
                     "isVerified": email_verified.isVerified,
                     "issueDesc": email_verified.issueDesc if not email_verified.isVerified else None
@@ -176,6 +192,7 @@ def main(ex_qanda=None, html_response=True):
             }
     except Exception as e:
         logging.error(f'Failed to get response to create email output: {e}')
+        raise
 
 if __name__ == '__main__':
-    main()
+    m()

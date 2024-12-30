@@ -1,16 +1,30 @@
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import logging
-from main_2 import main as m
+from main_2 import m
 import requests
 import os
 from dotenv import load_dotenv
 import json
+from pathlib import Path
 
 # Load environment variables at the start
 load_dotenv()
 app = Flask(__name__)
 CORS(app)
+
+# Configure logging at the start of the file
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),  # Print to console
+        logging.FileHandler('webhook.log')  # Also save to a file
+    ]
+)
+
+# Test logging
+logger = logging.getLogger(__name__)
 
 # Get API key at startup
 MONDAY_API_KEY = os.getenv('MONDAY_API_KEY')
@@ -18,19 +32,33 @@ MONDAY_API_KEY='eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjQ0OTczNzg5NSwiYWFpIjoxMSwidWlkIjo
 
 if not MONDAY_API_KEY:
     raise ValueError("MONDAY_API_KEY not found in environment variables")
-logging.info(f"Monday.com API key loaded (first 10 chars): {MONDAY_API_KEY[:10]}...")
+logger.info(f"Monday.com API key loaded (first 10 chars): {MONDAY_API_KEY[:10]}...")
 
 localEnv = False
 
+# Add after other logging setup
+logger.info(f"Current working directory: {os.getcwd()}")
+logger.info(f"Script directory: {os.path.dirname(__file__)}")
+logger.info(f"Files in current directory: {os.listdir(os.path.dirname(__file__))}")
+
+# At the top of the file, after other imports
+SCRIPT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+SYSTEM_INSTRUCTIONS_PATH = str(SCRIPT_DIR / 'systemInstructions.txt')
+
+logger.info(f"Script directory: {SCRIPT_DIR}")
+logger.info(f"System instructions path: {SYSTEM_INSTRUCTIONS_PATH}")
+logger.info(f"File exists: {os.path.exists(SYSTEM_INSTRUCTIONS_PATH)}")
+logger.info(f"Directory contents: {os.listdir(SCRIPT_DIR)}")
+
 def run_service(data):
-    logging.info(f"Running the main service")
+    logger.info(f"Running the main service")
     data = data.get('text', '')
     if not isinstance(data, str):
         raise ValueError("Expected a string in 'data['text']'")
     mailTxt: str = m(data)
     if not isinstance(mailTxt, str):
         raise ValueError("Expected 'm' function to return a string")
-    logging.info(f"returned emailTxt as html")
+    logger.info(f"returned emailTxt as html")
     return mailTxt
 
 def process_monday_response(data: dict) -> dict:
@@ -125,11 +153,11 @@ def get_monday_board_and_item_details(item_id: int, api_key: str) -> dict:
             data = response.json()
             if 'data' in data and 'items' in data['data'] and data['data']['items']:
                 board_id = data['data']['items'][0]['board']['id']
-                logging.info(f"Board ID from API: {board_id}")
+                logger.info(f"Board ID from API: {board_id}")
                 columns = data['data']['items'][0]['board']['columns']
-                logging.info("Available columns in the board:")
+                logger.info("Available columns in the board:")
                 for col in columns:
-                    logging.info(f"Column ID: {col['id']}, Title: {col['title']}, Type: {col['type']}")
+                    logger.info(f"Column ID: {col['id']}, Title: {col['title']}, Type: {col['type']}")
         
         response.raise_for_status()
         
@@ -161,52 +189,55 @@ def get_monday_board_and_item_details(item_id: int, api_key: str) -> dict:
             
         return data
     except Exception as e:
-        logging.error(f"Error fetching Monday.com details: {str(e)}")
+        logger.error(f"Error fetching Monday.com details: {str(e)}")
         return None
 
 def prepare_and_run_service(monday_data: dict) -> str:
     """
     Prepares data from Monday.com API response and runs the service
     """
-    if not monday_data or 'business' not in monday_data or 'qa_pairs' not in monday_data:
-        raise ValueError("Invalid Monday.com data format")
+    try:
+        if not monday_data or 'business' not in monday_data or 'qa_pairs' not in monday_data:
+            raise ValueError("Invalid Monday.com data format")
 
-    # Format the text with Q&A pairs and business description
-    formatted_text = ""
-    
-    # Debug logging
-    logging.info("Processing Monday data:")
-    logging.info(f"Business info: {monday_data['business']}")
-    logging.info(f"Number of QA pairs: {len(monday_data['qa_pairs'])}")
-    
-    # Add Q&A pairs
-    for qa in monday_data['qa_pairs']:
-        formatted_text += f"Question: {qa['question']}\n"
-        formatted_text += f"Answer: {qa['answer']}\n\n"
-        # Debug logging for each QA pair
-        logging.info(f"Processing QA: {qa['question']} -> {qa['answer']}")
-    
-    # Add business description at the end
-    business_info = monday_data['business']
-    business_desc = business_info.get('description', '').strip()
-    if business_desc:
-        formatted_text += f"Business Description: {business_desc}\n"
-    
-    # Debug logging
-    logging.info("Final formatted text:")
-    logging.info(formatted_text)
-    
-    # Prepare data for run_service
-    data = {'text': formatted_text}
-    
-    # Call run_service with html_response=False to get data object
-    response = m(data.get('text', ''), html_response=False)
-    
-    # Now you can directly access the message text
-    message_text = response['messageText']
-    logging.info(f"Message text: {message_text}")
-    
-    return message_text
+        # Format the text with Q&A pairs and business description
+        formatted_text = ""
+        
+        # Debug logging
+        logger.info("Processing Monday data:")
+        logger.info(f"Business info: {monday_data.get('business', {})}")
+        logger.info(f"Number of QA pairs: {len(monday_data.get('qa_pairs', []))}")
+        
+        # Add Q&A pairs
+        for qa in monday_data.get('qa_pairs', []):
+            formatted_text += f"Question: {qa['question']}\n"
+            formatted_text += f"Answer: {qa['answer']}\n\n"
+            
+        # Add business description at the end
+        business_info = monday_data.get('business', {})
+        business_desc = business_info.get('description', '').strip()
+        if business_desc:
+            formatted_text += f"Business Description: {business_desc}\n"
+        
+        logger.info("Final formatted text:")
+        logger.info(formatted_text)
+        
+        # Call run_service with the absolute path
+        response = m(formatted_text, html_response=False, system_instructions_path=SYSTEM_INSTRUCTIONS_PATH)
+        
+        if not response:
+            logger.error("No response received from main service")
+            return "Error: Could not generate email content"
+            
+        message_text = response.get('messageText', 'Error: No message text generated')
+        logger.info(f"Generated message text: {message_text[:200]}...")  # Log first 200 chars
+        
+        return message_text
+        
+    except Exception as e:
+        logger.error(f"Error in prepare_and_run_service: {str(e)}")
+        logger.exception("Full stack trace:")
+        return f"Error generating email content: {str(e)}"
 
 def update_monday_item_email(item_id: int, email_content: str, api_key: str, board_id: str) -> bool:
     """
@@ -240,9 +271,9 @@ def update_monday_item_email(item_id: int, email_content: str, api_key: str, boa
     }
 
     try:
-        logging.info(f"Sending update to Monday.com for item {item_id} in board {board_id}")
-        logging.info(f"Query: {query}")
-        logging.info(f"Variables: {variables}")
+        logger.info(f"Sending update to Monday.com for item {item_id} in board {board_id}")
+        logger.info(f"Query: {query}")
+        logger.info(f"Variables: {variables}")
         
         response = requests.post(
             API_URL,
@@ -250,42 +281,67 @@ def update_monday_item_email(item_id: int, email_content: str, api_key: str, boa
             headers=headers
         )
         
-        logging.info(f"Monday.com API Response Status: {response.status_code}")
-        logging.info(f"Monday.com API Response: {response.text}")
+        logger.info(f"Monday.com API Response Status: {response.status_code}")
+        logger.info(f"Monday.com API Response: {response.text}")
         
         if response.status_code != 200:
-            logging.error(f"Failed to update Monday.com item: {response.status_code} - {response.text}")
+            logger.error(f"Failed to update Monday.com item: {response.status_code} - {response.text}")
             return False
             
         data = response.json()
         if data.get('data', {}).get('change_simple_column_value', {}).get('id'):
-            logging.info(f"Successfully updated email content for item {item_id}")
+            logger.info(f"Successfully updated email content for item {item_id}")
             return True
             
         if 'errors' in data:
-            logging.error(f"Monday.com API returned errors: {data['errors']}")
+            logger.error(f"Monday.com API returned errors: {data['errors']}")
         
         return False
         
     except Exception as e:
-        logging.error(f"Error updating Monday.com item: {str(e)}")
+        logger.error(f"Error updating Monday.com item: {str(e)}")
         return False
 
 @app.route('/questionandanswers', methods=['POST'])
 def trigger_service():
     data = request.json
-    logging.info(f"starting process")
+    logger.info(f"starting process")
     result = run_service(data)
-    logging.info(f" result returned to main")
+    logger.info(f" result returned to main")
     return Response(result, status=200, mimetype='text/html')
 
-@app.route('/monday-webhook', methods=['POST'])
+@app.route('/monday-webhook', methods=['POST', 'PUT', 'OPTIONS'])
 def monday_webhook():
+    logger.info(f"Request method: {request.method}")
+    
+    if request.method == 'OPTIONS':
+        return '', 200
+        
+    if request.method not in ['POST', 'PUT']:
+        logger.error(f"Invalid method: {request.method}")
+        return jsonify({'error': 'Method not allowed'}), 405
+        
+    logger.info("====== WEBHOOK RECEIVED ======")
+    logger.info(f"Request Headers: {dict(request.headers)}")
+    
     try:
+        # Get the raw data first
+        raw_data = request.get_data(as_text=True)
+        logger.info(f"Raw request data: {raw_data}")
+        
+        # Try to parse JSON
         data = request.json
+        logger.info(f"Parsed JSON data: {data}")
+        
+        # Handle challenge request
         if 'challenge' in data:
-            return jsonify({'challenge': data['challenge']})
-            
+            challenge = data['challenge']
+            logger.info(f"Challenge received: {challenge}")
+            response = {'challenge': challenge}
+            logger.info(f"Sending challenge response: {response}")
+            return jsonify(response)
+        
+        # Handle normal webhook
         if 'event' in data and 'pulseId' in data['event']:
             item_id = data['event']['pulseId']
             monday_data = get_monday_board_and_item_details(item_id, MONDAY_API_KEY)
@@ -293,19 +349,20 @@ def monday_webhook():
             if monday_data:
                 # Generate email content
                 email_content = prepare_and_run_service(monday_data)
-                logging.info("Generated email content successfully")
-                logging.info(f"Email content: {email_content[:200]}...") # Log first 200 chars
+                logger.info("Generated email content successfully")
+                logger.info(f"Email content: {email_content[:200]}...") # Log first 200 chars
                 
                 # Update Monday.com with the generated email using the board ID from the API
                 if update_monday_item_email(item_id, email_content, MONDAY_API_KEY, monday_data['board_id']):
-                    logging.info(f"Successfully updated Monday.com item {item_id} with email content")
+                    logger.info(f"Successfully updated Monday.com item {item_id} with email content")
                 else:
-                    logging.error(f"Failed to update Monday.com item {item_id} with email content")
+                    logger.error(f"Failed to update Monday.com item {item_id} with email content")
             
         return jsonify({'status': 'success'}), 200
         
     except Exception as e:
-        logging.error(f"Error processing Monday webhook: {str(e)}")
+        logger.error(f"Error in webhook handler: {str(e)}")
+        logger.exception("Full stack trace:")  # This will log the full stack trace
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
