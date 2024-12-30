@@ -7,24 +7,72 @@ import os
 from dotenv import load_dotenv
 import json
 from pathlib import Path
+from logging.handlers import RotatingFileHandler
+from datetime import datetime
+from openai import OpenAI
+from werkzeug.middleware.proxy_fix import ProxyFix
 
-# Load environment variables at the start
+# Load environment variables at startup
 load_dotenv()
+
+# Define all environment variables at the top
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+MONDAY_API_KEY = os.getenv('MONDAY_API_KEY')
+PORT = int(os.getenv('PORT', 5000))
+ENV = os.getenv('ENV', 'production')
+
+# Validate required environment variables
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY not found in environment variables")
+if not MONDAY_API_KEY:
+    raise ValueError("MONDAY_API_KEY not found in environment variables")
+
 app = Flask(__name__)
-CORS(app)
+CORS(app)  # Configure with specific origins in production
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Configure logging at the start of the file
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),  # Print to console
-        logging.FileHandler('webhook.log')  # Also save to a file
-    ]
-)
+# Security headers middleware
+@app.after_request
+def add_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    return response
 
-# Test logging
-logger = logging.getLogger(__name__)
+# Define paths at the top of the file
+APP_ROOT = Path(os.path.dirname(os.path.abspath(__file__)))
+LOG_DIR = APP_ROOT / 'logs'
+LOG_FILE_PATH = LOG_DIR / 'app.log'
+
+# Create logs directory if it doesn't exist
+os.makedirs(LOG_DIR, exist_ok=True)
+
+def setup_logging():
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(console_format)
+    logger.addHandler(console_handler)
+
+    # File handler with rotation
+    file_handler = RotatingFileHandler(
+        LOG_FILE_PATH,
+        maxBytes=1024 * 1024,  # 1MB
+        backupCount=5
+    )
+    file_handler.setLevel(logging.INFO)
+    file_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s')
+    file_handler.setFormatter(file_format)
+    logger.addHandler(file_handler)
+
+    return logger
+
+# Initialize logger
+logger = setup_logging()
 
 # Get API key at startup
 MONDAY_API_KEY = os.getenv('MONDAY_API_KEY')
@@ -41,14 +89,19 @@ logger.info(f"Current working directory: {os.getcwd()}")
 logger.info(f"Script directory: {os.path.dirname(__file__)}")
 logger.info(f"Files in current directory: {os.listdir(os.path.dirname(__file__))}")
 
-# At the top of the file, after other imports
-SCRIPT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
-SYSTEM_INSTRUCTIONS_PATH = str(SCRIPT_DIR / 'systemInstructions.txt')
+# Define application root
+APP_ROOT = Path(os.path.dirname(os.path.abspath(__file__)))
+SYSTEM_INSTRUCTIONS_PATH = APP_ROOT / 'systemInstructions.txt'
+STATIC_FILES_PATH = APP_ROOT / 'statics'
+LOG_FILE_PATH = APP_ROOT / 'logs' / 'app.log'
 
-logger.info(f"Script directory: {SCRIPT_DIR}")
+# Ensure log directory exists
+os.makedirs(os.path.dirname(LOG_FILE_PATH), exist_ok=True)
+
+logger.info(f"Script directory: {APP_ROOT}")
 logger.info(f"System instructions path: {SYSTEM_INSTRUCTIONS_PATH}")
 logger.info(f"File exists: {os.path.exists(SYSTEM_INSTRUCTIONS_PATH)}")
-logger.info(f"Directory contents: {os.listdir(SCRIPT_DIR)}")
+logger.info(f"Directory contents: {os.listdir(APP_ROOT)}")
 
 def run_service(data):
     logger.info(f"Running the main service")
@@ -364,6 +417,33 @@ def monday_webhook():
         logger.error(f"Error in webhook handler: {str(e)}")
         logger.exception("Full stack trace:")  # This will log the full stack trace
         return jsonify({'error': str(e)}), 500
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for AWS"""
+    try:
+        # Check if we can read system instructions
+        if not os.path.exists(SYSTEM_INSTRUCTIONS_PATH):
+            return jsonify({
+                'status': 'error',
+                'message': 'System instructions file not found'
+            }), 500
+
+        # Check OpenAI API connection
+        client = OpenAI()
+        client.models.list()
+
+        return jsonify({
+            'status': 'healthy',
+            'environment': ENV,
+            'timestamp': datetime.utcnow().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
 
 if __name__ == '__main__':
     if localEnv:    

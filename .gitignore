@@ -1,3 +1,4 @@
+requirements copy.txt #an old backup
 # Virtual Environments
 .venv/
 venv/

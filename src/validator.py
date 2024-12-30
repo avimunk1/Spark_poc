@@ -1,6 +1,13 @@
 from pydantic import BaseModel
 from openai import OpenAI
-client = OpenAI()
+import logging
+import os
+
+# Initialize OpenAI client without proxies
+client = OpenAI(
+    api_key=os.getenv('OPENAI_API_KEY')  # This will get the API key from environment variables
+)
+
 questionsAndAnswers = "question: how are you doing recently? answer: I am doing well"
 message = "I am writing to update that i'm doing well"
 
