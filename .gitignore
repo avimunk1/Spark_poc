@@ -1,4 +1,4 @@
-requirements copy.txt #an old backup
+requirements copy.txt
 # Virtual Environments
 .venv/
 venv/
@@ -115,3 +115,4 @@ dist/
 *.exe
 *.o
 *.pyc
+.env

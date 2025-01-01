@@ -76,13 +76,12 @@ logger = setup_logging()
 
 # Get API key at startup
 MONDAY_API_KEY = os.getenv('MONDAY_API_KEY')
-MONDAY_API_KEY='eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjQ0OTczNzg5NSwiYWFpIjoxMSwidWlkIjo2MDk4NjI5MCwiaWFkIjoiMjAyNC0xMi0xOFQxODoyNzowNy4wMDBaIiwicGVyIjoibWU6d3JpdGUiLCJhY3RpZCI6MTAzNzQ5NDQsInJnbiI6InVzZTEifQ.qSiBgzitac9pnPIo-tdE4cxB0wQuJPMXKdf3uCqbVIM'
 
 if not MONDAY_API_KEY:
     raise ValueError("MONDAY_API_KEY not found in environment variables")
 logger.info(f"Monday.com API key loaded (first 10 chars): {MONDAY_API_KEY[:10]}...")
 
-localEnv = False
+#localEnv = False
 
 # Add after other logging setup
 logger.info(f"Current working directory: {os.getcwd()}")
@@ -446,9 +445,11 @@ def health_check():
         }), 500
 
 if __name__ == '__main__':
-    if localEnv:    
-        app.run(host='0.0.0.0', port=5001)
+    if ENV == 'development':    
+        port = 5001
     else:
-        app.run(host='0.0.0.0', port=5000)
-        print("localEnv is False, running on default port")
+        port = 5000
+    
+    app.run(host='0.0.0.0', port=port)
+    print(f"Running in {ENV} mode on port {port}")
 

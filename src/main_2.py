@@ -80,8 +80,8 @@ def email_output_to_html(email_text, email_verified: MailResults):
     """
     return html_content
 
+# Define the EmailOutput model
 class EmailOutput(BaseModel):
-    """Pydantic model to define the structure of the email output."""
     emailSubject: str
     messageText: str
     isReliable: bool
@@ -138,43 +138,31 @@ def m(ex_qanda=None, html_response=True, system_instructions_path=None):
         user_content = questions_and_answers
 
         # Initialize OpenAI client
-        client = OpenAI()  # This will use OPENAI_API_KEY from environment
+        client = OpenAI()
 
-        # Updated to use correct OpenAI SDK format without response_format
+        # Remove response_format since it's not supported
         completion = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {
                     "role": "system", 
-                    "content": system_content + "\nPlease respond in JSON format with the following structure: {\"emailSubject\": string, \"messageText\": string, \"isReliable\": boolean, \"isTooSad\": boolean, \"businessName\": string}"
+                    "content": system_content + "\nRespond with a valid JSON object containing emailSubject (string), messageText (string), isReliable (boolean), isTooSad (boolean), and businessName (string)"
                 },
                 {"role": "user", "content": user_content},
             ]
         )
 
-        # Parse the response
+        # Parse the response using Pydantic
         response_text = completion.choices[0].message.content
-        logger.info(f"Raw response from OpenAI: {response_text[:200]}...")  # Log first 200 chars
-        
-        try:
-            email_text = json.loads(response_text)  # Parse JSON response
-            logger.info("Successfully parsed JSON response")
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON response: {e}")
-            logger.error(f"Raw response was: {response_text}")
-            raise
+        logger.info(f"Raw response from OpenAI: {response_text[:200]}...")
         
         # Convert to EmailOutput model
-        email_output = EmailOutput(**email_text)
+        email_output = EmailOutput.parse_raw(response_text)
+        logger.info("Successfully parsed response to EmailOutput model")
 
-        logging.info(f'Is Reliable: {email_output.isReliable}')
-        logging.info(f'Is Too Sad: {email_output.isTooSad}')
-        logging.info(f'Business Name: {email_output.businessName}')
-
-        email_verified: MailResults = mailVerifed(questions_and_answers, email_output.messageText)
-        logging.info(f'2nd verification: {email_verified.isVerified}')
-        if not email_verified.isVerified:
-            logging.warning(f'Issue: {email_verified.issueDesc}')
+        # Verify the email content
+        email_verified = mailVerifed(questions_and_answers, email_output.messageText)
+        logger.info(f"Email verification result: {email_verified.isVerified}")
 
         if html_response:
             return email_output_to_html(email_output, email_verified)
@@ -191,7 +179,7 @@ def m(ex_qanda=None, html_response=True, system_instructions_path=None):
                 }
             }
     except Exception as e:
-        logging.error(f'Failed to get response to create email output: {e}')
+        logger.error(f"Failed to get response to create email output: {e}")
         raise
 
 if __name__ == '__main__':
