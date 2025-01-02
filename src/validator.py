@@ -3,13 +3,25 @@ from openai import OpenAI
 import logging
 import os
 import json
+from dotenv import load_dotenv
+from pathlib import Path
 
 # Add logger initialization
 logger = logging.getLogger(__name__)
 
-# Initialize OpenAI client without proxies
+# Get the project root directory and load .env
+ROOT_DIR = Path(__file__).resolve().parent.parent
+ENV_PATH = ROOT_DIR / '.env'
+load_dotenv(ENV_PATH)
+
+# Get the API key
+api_key = os.getenv('OPENAI_API_KEY')
+if not api_key:
+    raise ValueError("OPENAI_API_KEY not found in environment variables")
+
+# Initialize OpenAI client with explicit API key
 client = OpenAI(
-    api_key=os.getenv('OPENAI_API_KEY')
+    api_key=api_key
 )
 
 questionsAndAnswers = "question: how are you doing recently? answer: I am doing well"
