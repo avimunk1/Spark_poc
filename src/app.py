@@ -12,8 +12,12 @@ from datetime import datetime
 from openai import OpenAI
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-# Load environment variables at startup
-load_dotenv()
+# Get the project root directory
+ROOT_DIR = Path(__file__).resolve().parent.parent
+ENV_PATH = ROOT_DIR / '.env'
+
+# Load environment variables
+load_dotenv(ENV_PATH)
 
 # Define all environment variables at the top
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
