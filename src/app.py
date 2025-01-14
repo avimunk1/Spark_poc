@@ -11,6 +11,11 @@ from logging.handlers import RotatingFileHandler
 from datetime import datetime
 from openai import OpenAI
 from werkzeug.middleware.proxy_fix import ProxyFix
+import jwt
+from ipaddress import ip_address, ip_network
+from pydantic import ValidationError
+from pydantic import BaseModel
+from typing import Optional
 
 # Get the project root directory
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -19,17 +24,21 @@ ENV_PATH = ROOT_DIR / '.env'
 # Load environment variables
 load_dotenv(ENV_PATH)
 
+
 # Define all environment variables at the top
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 MONDAY_API_KEY = os.getenv('MONDAY_API_KEY')
 PORT = int(os.getenv('PORT', 5000))
 ENV = os.getenv('ENV', 'production')
+MONDAY_AID = os.getenv('MONDAY_AID')
 
 # Validate required environment variables
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY not found in environment variables")
 if not MONDAY_API_KEY:
     raise ValueError("MONDAY_API_KEY not found in environment variables")
+if not MONDAY_AID:
+    raise ValueError("MONDAY_AID not found in environment variables")
 
 app = Flask(__name__)
 CORS(app)  # Configure with specific origins in production
@@ -83,14 +92,7 @@ MONDAY_API_KEY = os.getenv('MONDAY_API_KEY')
 
 if not MONDAY_API_KEY:
     raise ValueError("MONDAY_API_KEY not found in environment variables")
-logger.info(f"Monday.com API key loaded (first 10 chars): {MONDAY_API_KEY[:10]}...")
 
-#localEnv = False
-
-# Add after other logging setup
-logger.info(f"Current working directory: {os.getcwd()}")
-logger.info(f"Script directory: {os.path.dirname(__file__)}")
-logger.info(f"Files in current directory: {os.listdir(os.path.dirname(__file__))}")
 
 # Define application root
 APP_ROOT = Path(os.path.dirname(os.path.abspath(__file__)))
@@ -101,10 +103,13 @@ LOG_FILE_PATH = APP_ROOT / 'logs' / 'app.log'
 # Ensure log directory exists
 os.makedirs(os.path.dirname(LOG_FILE_PATH), exist_ok=True)
 
-logger.info(f"Script directory: {APP_ROOT}")
-logger.info(f"System instructions path: {SYSTEM_INSTRUCTIONS_PATH}")
-logger.info(f"File exists: {os.path.exists(SYSTEM_INSTRUCTIONS_PATH)}")
-logger.info(f"Directory contents: {os.listdir(APP_ROOT)}")
+# Define your EmailOutput model
+class EmailOutput(BaseModel):
+    subject: str
+    body: str
+    business_name: str
+    is_reliable: bool = True
+    is_too_sad: bool = False
 
 def run_service(data):
     logger.info(f"Running the main service")
@@ -204,7 +209,7 @@ def get_monday_board_and_item_details(item_id: int, api_key: str) -> dict:
             headers=headers
         )
         
-        # Add debug logging for board ID
+        #  debug logging for board ID
         if response.status_code == 200:
             data = response.json()
             if 'data' in data and 'items' in data['data'] and data['data']['items']:
@@ -249,14 +254,10 @@ def get_monday_board_and_item_details(item_id: int, api_key: str) -> dict:
         return None
 
 def prepare_and_run_service(monday_data: dict) -> str:
-    """
-    Prepares data from Monday.com API response and runs the service
-    """
     try:
         if not monday_data or 'business' not in monday_data or 'qa_pairs' not in monday_data:
             raise ValueError("Invalid Monday.com data format")
 
-        # Format the text with Q&A pairs and business description
         formatted_text = ""
         
         # Debug logging
@@ -264,10 +265,20 @@ def prepare_and_run_service(monday_data: dict) -> str:
         logger.info(f"Business info: {monday_data.get('business', {})}")
         logger.info(f"Number of QA pairs: {len(monday_data.get('qa_pairs', []))}")
         
-        # Add Q&A pairs
+        # Add Q&A pairs, excluding system fields and duplicates
+        seen_questions = set()
         for qa in monday_data.get('qa_pairs', []):
-            formatted_text += f"Question: {qa['question']}\n"
-            formatted_text += f"Answer: {qa['answer']}\n\n"
+            # Skip unwanted fields
+            if (qa['type'] not in ['creation_log', 'status', 'mirror', 'board_relation', 'file', 'link', 'item_id'] and 
+                qa['answer'] and 
+                isinstance(qa['answer'], str) and
+                not qa['answer'].startswith('http')):
+                
+                # Skip duplicate questions
+                if qa['question'] not in seen_questions:
+                    seen_questions.add(qa['question'])
+                    formatted_text += f"Question: {qa['question']}\n"
+                    formatted_text += f"Answer: {qa['answer']}\n\n"
             
         # Add business description at the end
         business_info = monday_data.get('business', {})
@@ -278,26 +289,24 @@ def prepare_and_run_service(monday_data: dict) -> str:
         logger.info("Final formatted text:")
         logger.info(formatted_text)
         
-        # Call run_service with the absolute path
+        # Call m() from main_2.py to handle the OpenAI interaction
         response = m(formatted_text, html_response=False, system_instructions_path=SYSTEM_INSTRUCTIONS_PATH)
         
         if not response:
             logger.error("No response received from main service")
             return "Error: Could not generate email content"
             
-        message_text = response.get('messageText', 'Error: No message text generated')
-        logger.info(f"Generated message text: {message_text[:200]}...")  # Log first 200 chars
-        
-        return message_text
+        # Response is already a string, just return it
+        return response
         
     except Exception as e:
         logger.error(f"Error in prepare_and_run_service: {str(e)}")
         logger.exception("Full stack trace:")
         return f"Error generating email content: {str(e)}"
 
-def update_monday_item_email(item_id: int, email_content: str, api_key: str, board_id: str) -> bool:
+def update_monday_item_email(item_id: int, email_content: str, validation_result: MailResults, api_key: str, board_id: str) -> bool:
     """
-    Update the email content field in Monday.com item
+    Update the email content and validation status in Monday.com item
     """
     API_URL = "https://api.monday.com/v2"
     
@@ -307,8 +316,9 @@ def update_monday_item_email(item_id: int, email_content: str, api_key: str, boa
         "API-Version": "2024-01"
     }
     
+    # Update both email content and validation status
     query = """
-    mutation ($itemId: ID!, $boardId: ID!, $emailBody: String!) {
+    mutation ($itemId: ID!, $boardId: ID!, $emailBody: String!, $validationDesc: String!) {
         change_simple_column_value(
             item_id: $itemId,
             board_id: $boardId,
@@ -317,13 +327,22 @@ def update_monday_item_email(item_id: int, email_content: str, api_key: str, boa
         ) {
             id
         }
+        change_simple_column_value(
+            item_id: $itemId,
+            board_id: $boardId,
+            column_id: "text_validation",  # Add this column to your Monday.com board
+            value: $validationDesc
+        ) {
+            id
+        }
     }
     """
 
     variables = {
         "itemId": str(item_id),
-        "boardId": board_id,  # Use the board ID from the API response
-        "emailBody": email_content
+        "boardId": board_id,
+        "emailBody": email_content,
+        "validationDesc": validation_result.issueDesc if not validation_result.isVerified else "Email content verified"
     }
 
     try:
@@ -358,8 +377,49 @@ def update_monday_item_email(item_id: int, email_content: str, api_key: str, boa
         logger.error(f"Error updating Monday.com item: {str(e)}")
         return False
 
+# Monday.com IP ranges
+MONDAY_IP_RANGES = [
+    '185.237.4.0/24'  # Covers all IPs we're seeing: 185.237.4.1 through 185.237.4.6
+]
+
+def verify_monday_request():
+    """Verify that the request comes from Monday.com"""
+    try:
+        # Get client IP
+        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        
+        # Check if IP is in Monday.com ranges
+        is_valid_ip = any(
+            ip_address(client_ip) in ip_network(range)
+            for range in MONDAY_IP_RANGES
+        )
+        
+        if not is_valid_ip:
+            logger.warning(f"Request from unauthorized IP: {client_ip}")
+            return False
+            
+        # Get account_id from the webhook payload
+        webhook_data = request.json
+        account_id = webhook_data.get('account_id')
+        
+        logger.info(f"Webhook data: {webhook_data}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error in verify_monday_request: {str(e)}")
+        return False
+
 @app.route('/questionandanswers', methods=['POST'])
 def trigger_service():
+    logger.info(f"Current ENV value: {ENV}")
+    if ENV != 'development':
+        logger.warning(f"Attempt to access test endpoint in {ENV} environment")
+        return jsonify({
+            'error': 'This endpoint is only available in development environment'
+        }), 403
+    
+    # Only execute in development
     data = request.json
     logger.info(f"starting process")
     result = run_service(data)
@@ -368,19 +428,28 @@ def trigger_service():
 
 @app.route('/monday-webhook', methods=['POST', 'PUT', 'OPTIONS'])
 def monday_webhook():
-    logger.info(f"Request method: {request.method}")
-    
     if request.method == 'OPTIONS':
         return '', 200
         
-    if request.method not in ['POST', 'PUT']:
-        logger.error(f"Invalid method: {request.method}")
-        return jsonify({'error': 'Method not allowed'}), 405
+    # Skip verification for challenge requests
+    if request.is_json and 'challenge' in request.json:
+        return jsonify({'challenge': request.json['challenge']})
         
-    logger.info("====== WEBHOOK RECEIVED ======")
-    logger.info(f"Request Headers: {dict(request.headers)}")
+    # Verify the request
+    if not verify_monday_request():
+        return jsonify({'error': 'Unauthorized'}), 403
     
+    # If verification passes, continue with the rest of your webhook code
     try:
+        logger.info(f"Request method: {request.method}")
+        
+        if request.method not in ['POST', 'PUT']:
+            logger.error(f"Invalid method: {request.method}")
+            return jsonify({'error': 'Method not allowed'}), 405
+        
+        logger.info("====== WEBHOOK RECEIVED ======")
+        logger.info(f"Request Headers: {dict(request.headers)}")
+        
         # Get the raw data first
         raw_data = request.get_data(as_text=True)
         logger.info(f"Raw request data: {raw_data}")
@@ -423,7 +492,7 @@ def monday_webhook():
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Health check endpoint for AWS"""
+    """Health check endpoint for AWS for future monitoring"""
     try:
         # Check if we can read system instructions
         if not os.path.exists(SYSTEM_INSTRUCTIONS_PATH):

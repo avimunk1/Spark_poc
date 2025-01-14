@@ -51,13 +51,13 @@ project/
    Start the server locally by running the following command:
    ```bash
    python3 src/app.py
-2. **run index.html** to set the Q&A recived from the business.  submit the form to send the data to the server and disply the update email.  note the relialbole and validator results.
+2. **run index.html** to set the Q&A recived from the business.  submit the form to send the data to the server and disply the update email.  note the relialbole and validator results. this form is not used for the production enviorment i.e used for testing only.
    ```
 
 2. **Email Generation**:
    The script in `main_2.py` can be used to generate email content using OpenAI. Before running the script, make sure your OpenAI API key is set as an environment variable:
    ```bash
-   export OPENAI_API_KEY='your-openai-api-key'
+   
    ```
 
 3. **Static Files**:
@@ -73,7 +73,9 @@ Refer to the `src/systemInstructions.txt` file for detailed guidelines on using 
 - Flask
 - OpenAI API key (for email generation)
 - AWS or S3 for file storage (if necessary)
-
+- Monday API key (for monday integration)
+- Monday workspace id (for monday integration)
+- Moday SDK (for monday integration)
 
 ## License
 
@@ -84,5 +86,13 @@ Monday intgreation
 to start monday integration:
    1. run the app.py normaly
    2. run Ngrok: ngrok http 5000
-   3. use the ngrok url in the monday webhook to create a new webhook: the ngrook url + /monday_webhook
+   3. use the ngrok url in the monday webhook to create a new webhook: the public ip+ /monday_webhook
+   4. add the workspace id and monday API key to the .env file
+
+server usfull commands:
+   1. run the service in background: PYTHONPATH=/home/ec2-user/spark_poc/src gunicorn --workers 3 --bind 0.0.0.0:5000 app:app --daemon
+   2. To check if gunicorn is running: ps aux | grep gunicorn
+   3. To stop the service: pkill gunicorn
+   4. check logs: tail -f /home/ec2-user/spark_poc/src/logs/app.log
+  
    

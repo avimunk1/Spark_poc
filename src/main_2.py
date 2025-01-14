@@ -84,8 +84,8 @@ def email_output_to_html(email_text, email_verified: MailResults):
 class EmailOutput(BaseModel):
     emailSubject: str
     messageText: str
-    isReliable: bool
-    isTooSad: bool
+    isReliable: bool 
+    isTooSad: bool 
     businessName: str
 
 def get_openai_api_key():
@@ -140,46 +140,39 @@ def m(ex_qanda=None, html_response=True, system_instructions_path=None):
         # Initialize OpenAI client
         client = OpenAI()
 
-        # Remove response_format since it's not supported
-        completion = client.chat.completions.create(
-            model="gpt-4",
+        completion = client.beta.chat.completions.parse(
+            model="gpt-4o",
             messages=[
                 {
                     "role": "system", 
-                    "content": system_content + "\nRespond with a valid JSON object containing emailSubject (string), messageText (string), isReliable (boolean), isTooSad (boolean), and businessName (string)"
+                    "content": system_content
                 },
                 {"role": "user", "content": user_content},
-            ]
+            ],
+            response_format=EmailOutput
         )
-
-        # Parse the response using Pydantic
-        response_text = completion.choices[0].message.content
-        logger.info(f"Raw response from OpenAI: {response_text[:200]}...")
         
-        # Convert to EmailOutput model
-        email_output = EmailOutput.parse_raw(response_text)
-        logger.info("Successfully parsed response to EmailOutput model")
-
-        # Verify the email content
+        # Get the JSON string
+        email_output_str = completion.choices[0].message.content
+        
+        # Use model_validate_json instead of parse_raw
+        email_output = EmailOutput.model_validate_json(email_output_str)
+        
+        # Now verify with the parsed model
         email_verified = mailVerifed(questions_and_answers, email_output.messageText)
+        print("==========check this =============================")
+        print("this is the email output", email_verified)
+        #todo: add the output from vaildator to monday and remove this print
         logger.info(f"Email verification result: {email_verified.isVerified}")
 
         if html_response:
             return email_output_to_html(email_output, email_verified)
         else:
-            return {
-                "emailSubject": email_output.emailSubject,
-                "messageText": email_output.messageText,
-                "isReliable": email_output.isReliable,
-                "isTooSad": email_output.isTooSad,
-                "businessName": email_output.businessName,
-                "verification": {
-                    "isVerified": email_verified.isVerified,
-                    "issueDesc": email_verified.issueDesc if not email_verified.isVerified else None
-                }
-            }
+            return email_output.messageText
+            
     except Exception as e:
-        logger.error(f"Failed to get response to create email output: {e}")
+        logger.error(f"Error in m(): {str(e)}")
+        logger.error(f"Full error details: {e.__class__.__name__}: {str(e)}")
         raise
 
 if __name__ == '__main__':
