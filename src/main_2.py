@@ -133,7 +133,7 @@ def m(ex_qanda=None, html_response=True, system_instructions_path=None):
         questions_and_answers = ""
         if ex_qanda:
             questions_and_answers = ex_qanda
-            logger.info(f"Using provided Q&A: {questions_and_answers[:200]}...")
+            #logger.info(f"Using provided Q&A: {questions_and_answers[:200]}...")
             
         user_content = questions_and_answers
 

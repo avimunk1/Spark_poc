@@ -16,6 +16,7 @@ from ipaddress import ip_address, ip_network
 from pydantic import ValidationError
 from pydantic import BaseModel
 from typing import Optional
+from validator import MailResults
 
 # Get the project root directory
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -174,7 +175,7 @@ def get_monday_board_and_item_details(item_id: int, api_key: str) -> dict:
         "API-Version": "2024-01"
     }
     
-    # Updated query to also fetch board ID
+    # Add back the query definition
     query = """
     query ($itemId: [ID!]) {
         items(ids: $itemId) {
@@ -197,37 +198,27 @@ def get_monday_board_and_item_details(item_id: int, api_key: str) -> dict:
         }
     }
     """
-
+    
     variables = {
         "itemId": [str(item_id)]
     }
-
+    
     try:
-        response = requests.post(
-            API_URL,
-            json={"query": query, "variables": variables},
-            headers=headers
-        )
-        
-        #  debug logging for board ID
-        if response.status_code == 200:
-            data = response.json()
-            if 'data' in data and 'items' in data['data'] and data['data']['items']:
-                board_id = data['data']['items'][0]['board']['id']
-                logger.info(f"Board ID from API: {board_id}")
-                columns = data['data']['items'][0]['board']['columns']
-                logger.info("Available columns in the board:")
-                for col in columns:
-                    logger.info(f"Column ID: {col['id']}, Title: {col['title']}, Type: {col['type']}")
-        
-        response.raise_for_status()
-        
+        response = requests.post(API_URL, json={"query": query, "variables": variables}, headers=headers)
+        if response.status_code != 200:
+            logger.error(f"Monday.com API error: {response.status_code} - {response.text}")
+            return None
+            
         data = response.json()
         if 'data' in data and 'items' in data['data'] and data['data']['items']:
             item = data['data']['items'][0]
-            board_id = item['board']['id']  # Get the board ID
+            board_id = str(item['board']['id'])
+            logger.info(f"Board ID from API: {board_id}")
+            
+            # Create columns mapping
             columns = {col['id']: col['title'] for col in item['board']['columns']}
             
+            # Process column values into qa_pairs
             qa_pairs = []
             for column_value in item['column_values']:
                 if column_value['id'] in columns:
@@ -237,18 +228,20 @@ def get_monday_board_and_item_details(item_id: int, api_key: str) -> dict:
                         'type': column_value['type']
                     })
             
-            raw_data = {
+            # Create the processed data structure
+            processed_data = process_monday_response({
                 'item_name': item['name'],
                 'qa_pairs': qa_pairs,
-                'board_id': board_id  # Add board ID to the response
-            }
+                'board_id': board_id
+            })
             
-            # Process the data to extract business info and relevant Q&A
-            processed_data = process_monday_response(raw_data)
-            processed_data['board_id'] = board_id  # Add board ID to processed data
+            # Add board_id to processed data
+            processed_data['board_id'] = board_id
+            
+            logger.info(f"Processing data for item: {item['name']}")
+            
             return processed_data
             
-        return data
     except Exception as e:
         logger.error(f"Error fetching Monday.com details: {str(e)}")
         return None
@@ -286,8 +279,8 @@ def prepare_and_run_service(monday_data: dict) -> str:
         if business_desc:
             formatted_text += f"Business Description: {business_desc}\n"
         
-        logger.info("Final formatted text:")
-        logger.info(formatted_text)
+        #logger.info("Final formatted text:")
+        #logger.info(formatted_text)
         
         # Call m() from main_2.py to handle the OpenAI interaction
         response = m(formatted_text, html_response=False, system_instructions_path=SYSTEM_INSTRUCTIONS_PATH)
@@ -304,10 +297,8 @@ def prepare_and_run_service(monday_data: dict) -> str:
         logger.exception("Full stack trace:")
         return f"Error generating email content: {str(e)}"
 
-def update_monday_item_email(item_id: int, email_content: str, validation_result: MailResults, api_key: str, board_id: str) -> bool:
-    """
-    Update the email content and validation status in Monday.com item
-    """
+def update_monday_item_email(item_id: int, email_content: str, api_key: str, board_id: str) -> bool:
+    """Update the email content in Monday.com item"""
     API_URL = "https://api.monday.com/v2"
     
     headers = {
@@ -316,9 +307,8 @@ def update_monday_item_email(item_id: int, email_content: str, validation_result
         "API-Version": "2024-01"
     }
     
-    # Update both email content and validation status
     query = """
-    mutation ($itemId: ID!, $boardId: ID!, $emailBody: String!, $validationDesc: String!) {
+    mutation ($itemId: ID!, $boardId: ID!, $emailBody: String!) {
         change_simple_column_value(
             item_id: $itemId,
             board_id: $boardId,
@@ -327,37 +317,21 @@ def update_monday_item_email(item_id: int, email_content: str, validation_result
         ) {
             id
         }
-        change_simple_column_value(
-            item_id: $itemId,
-            board_id: $boardId,
-            column_id: "text_validation",  # Add this column to your Monday.com board
-            value: $validationDesc
-        ) {
-            id
-        }
     }
     """
-
+    
     variables = {
         "itemId": str(item_id),
         "boardId": board_id,
-        "emailBody": email_content,
-        "validationDesc": validation_result.issueDesc if not validation_result.isVerified else "Email content verified"
+        "emailBody": email_content
     }
-
+    
     try:
-        logger.info(f"Sending update to Monday.com for item {item_id} in board {board_id}")
-        logger.info(f"Query: {query}")
-        logger.info(f"Variables: {variables}")
-        
         response = requests.post(
             API_URL,
             json={"query": query, "variables": variables},
             headers=headers
         )
-        
-        logger.info(f"Monday.com API Response Status: {response.status_code}")
-        logger.info(f"Monday.com API Response: {response.text}")
         
         if response.status_code != 200:
             logger.error(f"Failed to update Monday.com item: {response.status_code} - {response.text}")
@@ -402,7 +376,7 @@ def verify_monday_request():
         webhook_data = request.json
         account_id = webhook_data.get('account_id')
         
-        logger.info(f"Webhook data: {webhook_data}")
+        #logger.info(f"Webhook data: {webhook_data}")
         
         return True
         
@@ -447,16 +421,13 @@ def monday_webhook():
             logger.error(f"Invalid method: {request.method}")
             return jsonify({'error': 'Method not allowed'}), 405
         
-        logger.info("====== WEBHOOK RECEIVED ======")
-        logger.info(f"Request Headers: {dict(request.headers)}")
+        logger.info("WEBHOOK RECEIVED")
         
         # Get the raw data first
         raw_data = request.get_data(as_text=True)
-        logger.info(f"Raw request data: {raw_data}")
         
         # Try to parse JSON
         data = request.json
-        logger.info(f"Parsed JSON data: {data}")
         
         # Handle challenge request
         if 'challenge' in data:
@@ -472,16 +443,13 @@ def monday_webhook():
             monday_data = get_monday_board_and_item_details(item_id, MONDAY_API_KEY)
             
             if monday_data:
-                # Generate email content
                 email_content = prepare_and_run_service(monday_data)
-                logger.info("Generated email content successfully")
-                logger.info(f"Email content: {email_content[:200]}...") # Log first 200 chars
+                logger.info("Email generated successfully")
                 
-                # Update Monday.com with the generated email using the board ID from the API
                 if update_monday_item_email(item_id, email_content, MONDAY_API_KEY, monday_data['board_id']):
-                    logger.info(f"Successfully updated Monday.com item {item_id} with email content")
+                    logger.info(f"Updated Monday.com item {item_id}")
                 else:
-                    logger.error(f"Failed to update Monday.com item {item_id} with email content")
+                    logger.error(f"Failed to update Monday.com item {item_id}")
             
         return jsonify({'status': 'success'}), 200
         
